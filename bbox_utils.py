@@ -115,7 +115,12 @@ def match_priors_with_gt(prior_boxes, boxes, gt_boxes, gt_labels, number_of_labe
     # remove from gt_boxes_map where overlap with prior boxes is less than 0.5
     gt_boxes_map_offset_suppressed = tf.where( tf.expand_dims(max_IOU_above_threshold, -1),  
                                         gt_box_label_map_offsets, tf.zeros_like(gt_box_label_map))
-    
+    # add a positive condition column for the localization loss
+    max_IOU_above_threshold_expand = tf.expand_dims(max_IOU_above_threshold, -1)
+    max_IOU_above_threshold_expand = tf.cast(max_IOU_above_threshold_expand, tf.float32)
+    gt_boxes_map_offset_suppressed_with_pos_cond = tf.concat([  gt_boxes_map_offset_suppressed, 
+                                                                max_IOU_above_threshold_expand ], axis = 2)
+
 
     gt_labels_map = tf.gather(gt_labels, max_IOU_idx_per_row, batch_dims = 1)
     # suppress the label where IOU with the gt boxes is < 0.5
@@ -123,7 +128,7 @@ def match_priors_with_gt(prior_boxes, boxes, gt_boxes, gt_labels, number_of_labe
                                         gt_labels_map, tf.zeros_like(gt_labels_map))
     gt_labels_one_hot_encoded = tf.one_hot(gt_labels_map_suppressed, number_of_labels)
 
-    return gt_boxes_map_offset_suppressed, gt_labels_one_hot_encoded
+    return gt_boxes_map_offset_suppressed_with_pos_cond, gt_labels_one_hot_encoded
 
 def calculate_offset_from_gt(gt_boxes_mapped_to_prior, prior_boxes):
     return gt_boxes_mapped_to_prior - tf.expand_dims(prior_boxes, axis=0)
