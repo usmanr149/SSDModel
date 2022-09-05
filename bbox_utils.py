@@ -52,7 +52,7 @@ def generate_default_boxes(feature_map_shapes, number_of_feature_maps, aspect_ra
 def box_overlap_iou(boxes, gt_boxes):
     """
     Args:
-        boxes: shape (1, total boxes, x_min, y_min, x_max, y_max)
+        boxes: shape (total boxes, x_min, y_min, x_max, y_max)
         gt_boxes: shape (1, total label, x_min  y_min, x_max, y_max)
 
     Returns:
@@ -79,11 +79,11 @@ def box_overlap_iou(boxes, gt_boxes):
     return tf.maximum(intersection_area / union, 0)
 
 
-def match_priors_with_gt(prior_boxes, boxes, gt_boxes, gt_labels, number_of_labels = 3, threshold = 0.5):
+def match_priors_with_gt(prior_boxes, boxes, gt_boxes, gt_labels, number_of_labels, threshold = 0.5):
     
     """
     prior boxes: (1, 8732, c_x, c_y, w, h)
-    boxes are box coordinate representation of prior: (1, 8732, x_min, y_min, x_max, y_max)
+    boxes: shape (total boxes, x_min, y_min, x_max, y_max)
     gt_boxes need to be (1, number of labels, x_min, y_min, x_max, y_max)
     gt_labels need to be like 1, [1,2,3]
 
@@ -98,7 +98,11 @@ def match_priors_with_gt(prior_boxes, boxes, gt_boxes, gt_labels, number_of_labe
     gt_box_label = convert_to_centre_dimensions_form(gt_boxes)
 
     # select the box with the highest IOU
-    # highest_overlap_idx = tf.math.argmax(IOU_map, axis = 0)
+    highest_overlap_idx = tf.math.argmax(IOU_map, axis = 1)
+    highest_overlap_idx = tf.cast(highest_overlap_idx, tf.int32)
+    idx = tf.range(IOU_map.shape[1])
+    highest_overlap_idx_map = tf.expand_dims(tf.equal(idx, tf.transpose(highest_overlap_idx)), axis = 0)
+    IOU_map = tf.where(tf.transpose(highest_overlap_idx_map, perm=[0,2,1]), tf.constant(1.0), IOU_map)
 
     # find the column idx with the highest IOU at each row
     max_IOU_idx_per_row = tf.math.argmax(IOU_map, axis = 2)
@@ -107,7 +111,7 @@ def match_priors_with_gt(prior_boxes, boxes, gt_boxes, gt_labels, number_of_labe
 
     # threshold IOU
     max_IOU_above_threshold = tf.greater(max_IOU_per_row, threshold)
-
+    
     # map the gt boxes to the prior boxes with the highest overlap
     gt_box_label_map = tf.gather(gt_box_label, max_IOU_idx_per_row, batch_dims = 1)
     # get the offset, offcet (delta_cx, delta_cy, delta_width, delta_height)
@@ -131,7 +135,15 @@ def match_priors_with_gt(prior_boxes, boxes, gt_boxes, gt_labels, number_of_labe
     return gt_boxes_map_offset_suppressed_with_pos_cond, gt_labels_one_hot_encoded
 
 def calculate_offset_from_gt(gt_boxes_mapped_to_prior, prior_boxes):
-    return gt_boxes_mapped_to_prior - tf.expand_dims(prior_boxes, axis=0)
+    prior_boxes = tf.expand_dims(prior_boxes, axis=0)
+    g_j_cx = (gt_boxes_mapped_to_prior[:, :, 0] - prior_boxes[:, :, 0]) / prior_boxes[:, :, 2]
+    g_j_cy = (gt_boxes_mapped_to_prior[:, :, 1] - prior_boxes[:, :, 1]) / prior_boxes[:, :, 3]
+    g_j_w = tf.math.log(gt_boxes_mapped_to_prior[:, :, 2] / prior_boxes[:, :, 2])
+    g_j_h = tf.math.log(gt_boxes_mapped_to_prior[:, :, 3] / prior_boxes[:, :, 3])
+
+    offset = tf.concat( [ g_j_cx, g_j_cy, g_j_w, g_j_h ] , axis = 0)
+
+    return tf.transpose(tf.expand_dims(offset, axis = 0), perm=[0,2,1])
 
 def convert_to_box_form(boxes):
     """
@@ -157,8 +169,8 @@ def convert_to_centre_dimensions_form(boxes):
 
     coordinates = tf.concat([
                 [
-                        (boxes[:, :, 0] + boxes[:, :, 2]) / 2, 
-                        (boxes[:, :, 1] + boxes[:, :, 3]) / 2,
+                        (boxes[:, :, 0] + boxes[:, :, 2]) / 2., 
+                        (boxes[:, :, 1] + boxes[:, :, 3]) / 2.,
                         boxes[:, :, 2] - boxes[:, :, 0],
                         boxes[:, :, 3] - boxes[:, :, 1]
                 ]], axis = 1)
@@ -167,3 +179,22 @@ def convert_to_centre_dimensions_form(boxes):
     return tf.clip_by_value(coordinates, clip_value_min = 0., clip_value_max = 1.)
 
 
+if __name__ == '__main__':
+    pass
+
+#     # check convert_to_centre_dimensions_form
+#     boxes = tf.constant([[
+#         [25 / 300., 50 / 300., 75 / 300., 90 / 300.]
+#     ]])
+#     assert convert_to_box_form(boxes) == tf.constant([[
+#                             [50 / 300., 70 / 300., 50 / 300., 40 / 300.]
+#                         ]])
+
+#     check convert_to_box_form(boxes)
+    
+    # boxes = tf.constant([
+    #   [50 / 300., 70 / 300., 50 / 300., 40 / 300.]
+    # ])
+#     assert convert_to_box_form(boxes) == tf.constant([[
+#                             [25 / 300., 50 / 300., 75 / 300., 90 / 300.]
+#                         ]])

@@ -12,12 +12,14 @@ class SSDLoss:
             pred_delta = (batch_size, number of prior boxes, [delta_cx, delta_cy, delta_w, delta_h])
 
         outputs:
-            loc_loss: Huber loss over all prior boxes with IOU > 0.5 over ground label boxes
+            loc_loss: Huber loss over all prior boxes with IOU > threshold (defined elsewhere)
+            over ground label boxes
         """
         # huber loss over all preds
         huber_loss = tf.keras.losses.Huber(
-            reduction=tf.keras.losses.Reduction.SUM
+            reduction=tf.keras.losses.Reduction.NONE
         )
+
         localization_loss_for_all_priors = huber_loss(actual_deltas[:, :, :4], pred_delta)
 
         # localization loss is only for default prior boxes with IOU > 0.5 over ground truth boxes
@@ -25,7 +27,12 @@ class SSDLoss:
 
         total_pos_boxes = tf.reduce_sum(actual_deltas[:, :, 4:], axis=1)
 
-        return self.alpha * localization_loss_for_all_priors / total_pos_boxes
+        # If an image has no labels, the loc loss for that image should be 0.
+        no_label_mask = tf.reduce_any( tf.not_equal(total_pos_boxes, tf.constant(0.)), axis = 1 )
+
+        return self.alpha * tf.where(tf.transpose([no_label_mask]), 
+                                                    localization_loss_for_all_priors / total_pos_boxes, 
+                                                    tf.constant(1e-12))
 
     def confidence_loss(self, actual_labels, pred_labels):
         """
@@ -36,7 +43,7 @@ class SSDLoss:
         outputs:
             conf_loss = loss per class
         """
-    
+
         categorical_cross_entropy = tf.losses.CategoricalCrossentropy(
             reduction=tf.losses.Reduction.NONE
         )
@@ -47,15 +54,25 @@ class SSDLoss:
         pos_mask = tf.cast(pos_cond, dtype=tf.float32)
         total_pos_boxes = tf.reduce_sum(pos_mask, axis=1)
 
-        pos_loss = tf.reduce_sum(pos_mask * confidence_loss_for_all, axis=1)
+        pos_loss = pos_mask * confidence_loss_for_all
 
         # hard negative mining
         # set positive cases to -1
         neg_cond = tf.reduce_any( tf.equal(actual_labels[..., :1], tf.constant(1.0)), axis = 2)
+        # confidence_loss_for_all = tf.where(neg_cond, confidence_loss_for_all, 
+        #                                 tf.negative(tf.ones(confidence_loss_for_all.shape))
+        #                                 )
         confidence_loss_for_all = tf.where(neg_cond, confidence_loss_for_all, 
-                                        tf.negative(tf.ones(confidence_loss_for_all.shape))
+                                        tf.constant(-1., tf.float32)
                                         )
+        # confidence_loss_for_all = tf.where(neg_cond, confidence_loss_for_all, 
+        #                                 tf.negative(tf.ones((8, 8732)))
+        #                                 )
+        
+        neg_boxes_for_empty_images = 30
         total_neg_boxes = tf.cast(total_pos_boxes * self.negative_mining_ratio, tf.int32)
+        no_neg_boxes_mask = tf.not_equal(total_neg_boxes, tf.constant(0))
+        total_neg_boxes = tf.where(no_neg_boxes_mask, total_neg_boxes, tf.constant(neg_boxes_for_empty_images))
 
         loss_sorted_indices = tf.argsort(confidence_loss_for_all, direction="DESCENDING")
         loss_sorted_rank = tf.argsort(loss_sorted_indices)
@@ -63,9 +80,16 @@ class SSDLoss:
         neg_mining_cond = tf.less(loss_sorted_rank, tf.expand_dims(total_neg_boxes, axis=1))
         neg_mining_mask = tf.cast(neg_mining_cond, dtype=tf.float32)
 
-        neg_loss = tf.reduce_sum(neg_mining_mask * confidence_loss_for_all, axis=1)
+        neg_loss = neg_mining_mask * confidence_loss_for_all
+        total_boxes = total_pos_boxes + tf.cast(total_neg_boxes, tf.float32)
+        total_loss = (pos_loss + neg_loss) / tf.expand_dims(total_boxes, axis = 1)
 
-        return (pos_loss + neg_loss) / total_pos_boxes
+        # If an image has no labels, the conf loss for that image should be 0.
+        no_label_mask = tf.reduce_any( tf.not_equal(tf.expand_dims(total_pos_boxes, axis = 1), tf.constant(0.)), axis = 1 )
+
+        return tf.where(tf.transpose([no_label_mask]), 
+                                    total_loss, 
+                                    tf.constant(1e-12))
 
     
 
