@@ -69,11 +69,13 @@ class SSDLoss:
         #                                 tf.negative(tf.ones((8, 8732)))
         #                                 )
         
+        # If there are no positive positive boxes in the select top 30
         neg_boxes_for_empty_images = 30
         total_neg_boxes = tf.cast(total_pos_boxes * self.negative_mining_ratio, tf.int32)
         no_neg_boxes_mask = tf.not_equal(total_neg_boxes, tf.constant(0))
         total_neg_boxes = tf.where(no_neg_boxes_mask, total_neg_boxes, tf.constant(neg_boxes_for_empty_images))
 
+        # sort by positive example
         loss_sorted_indices = tf.argsort(confidence_loss_for_all, direction="DESCENDING")
         loss_sorted_rank = tf.argsort(loss_sorted_indices)
 
@@ -85,11 +87,12 @@ class SSDLoss:
         total_loss = (pos_loss + neg_loss) / tf.expand_dims(total_boxes, axis = 1)
 
         # If an image has no labels, the conf loss for that image should be 0.
-        no_label_mask = tf.reduce_any( tf.not_equal(tf.expand_dims(total_pos_boxes, axis = 1), tf.constant(0.)), axis = 1 )
+        # no_label_mask = tf.reduce_any( tf.not_equal(tf.expand_dims(total_pos_boxes, axis = 1), tf.constant(0.)), axis = 1 )
 
-        return tf.where(tf.transpose([no_label_mask]), 
-                                    total_loss, 
-                                    tf.constant(1e-12))
+        return total_loss
+        # tf.where(tf.transpose([no_label_mask]), 
+        #                             total_loss, 
+        #                             tf.constant(0.))
 
     
 

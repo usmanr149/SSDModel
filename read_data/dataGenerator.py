@@ -73,9 +73,9 @@ class DataGenerator(keras.utils.Sequence):
                                      )
             
             # take care of images with no labels
-            # if no label then create an empty box for consistent IOU calculations
+            # if no label then the whole image is a background
             if len(labelled_gt_box_coords) == 0:
-                labelled_gt_box_coords = [[0, 0, 0 ,0 ,0]]
+                labelled_gt_box_coords = [[0, 0, 0 ,self.image_height, self.image_width]]
 
             image, labelled_gt_box_coords = resize_images_and_labels(image, labelled_gt_box_coords, self.image_height, self.image_width)
             if self.normalize:

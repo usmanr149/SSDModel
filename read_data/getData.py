@@ -15,8 +15,8 @@ def read_data(file_name, image_path, label_path):
     image_path = os.path.join(image_path, file_name + '.png')
     label_path = os.path.join(label_path, file_name + '.txt')
 
-    assert os.path.exists(image_path), "image not found"
-    assert os.path.exists(label_path), "label not found"
+    assert os.path.exists(image_path), "{0} image not found".format(image_path)
+    assert os.path.exists(label_path), "{0} label not found".format(label_path)
 
     image = cv2.imread(image_path)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -28,6 +28,7 @@ def read_data(file_name, image_path, label_path):
     labels = []
     for line in read_lines:
         line = line.strip().split(',')[1:]
+        # 0 is reserved for background
         labels.append([ int(line[0]) + 1, int(line[1]), int(line[2]), int(line[3]), int(line[4]) ])
 
     return image, labels
@@ -54,7 +55,7 @@ def resize_images_and_labels(image, labels, image_height = 300, image_width = 30
 
     return image, labels
 
-def label_dimensions_to_point_form(labels, image_height = 300, image_width = 300):
+def label_dimensions_normalized(labels, image_height = 300, image_width = 300):
     """
     input:
         labels: in [[category_label, x_min, y_min, x_max, y_max]]
