@@ -30,9 +30,13 @@ class SSDLoss:
         # If an image has no labels, the loc loss for that image should be 0.
         no_label_mask = tf.reduce_any( tf.not_equal(total_pos_boxes, tf.constant(0.)), axis = 1 )
 
-        return self.alpha * tf.where(tf.transpose([no_label_mask]), 
+        total_pos_boxes = tf.where(total_pos_boxes <= 0, 1e-6, total_pos_boxes)
+
+        loss = self.alpha * tf.where(tf.transpose([no_label_mask]), 
                                                     localization_loss_for_all_priors / total_pos_boxes, 
-                                                    tf.constant(1e-12))
+                                                    tf.constant(0.))
+
+        return tf.reduce_sum(loss, axis = 1)
 
     def confidence_loss(self, actual_labels, pred_labels):
         """
@@ -69,8 +73,8 @@ class SSDLoss:
         #                                 tf.negative(tf.ones((8, 8732)))
         #                                 )
         
-        # If there are no positive positive boxes in the select top 30
-        neg_boxes_for_empty_images = 30
+        # If there are no positive positive boxes in the select top k
+        neg_boxes_for_empty_images = 0
         total_neg_boxes = tf.cast(total_pos_boxes * self.negative_mining_ratio, tf.int32)
         no_neg_boxes_mask = tf.not_equal(total_neg_boxes, tf.constant(0))
         total_neg_boxes = tf.where(no_neg_boxes_mask, total_neg_boxes, tf.constant(neg_boxes_for_empty_images))
@@ -83,13 +87,14 @@ class SSDLoss:
         neg_mining_mask = tf.cast(neg_mining_cond, dtype=tf.float32)
 
         neg_loss = neg_mining_mask * confidence_loss_for_all
-        total_boxes = total_pos_boxes + tf.cast(total_neg_boxes, tf.float32)
-        total_loss = (pos_loss + neg_loss) / tf.expand_dims(total_boxes, axis = 1)
+        # total_boxes = total_pos_boxes + tf.cast(total_neg_boxes, tf.float32)
+        total_pos_boxes = tf.where(total_pos_boxes <= 0, 1e-6, total_pos_boxes)
+        total_loss = (pos_loss + neg_loss) / tf.expand_dims(total_pos_boxes, axis = 1)
 
         # If an image has no labels, the conf loss for that image should be 0.
         # no_label_mask = tf.reduce_any( tf.not_equal(tf.expand_dims(total_pos_boxes, axis = 1), tf.constant(0.)), axis = 1 )
 
-        return total_loss
+        return tf.reduce_sum(total_loss, axis = 1)
         # tf.where(tf.transpose([no_label_mask]), 
         #                             total_loss, 
         #                             tf.constant(0.))
