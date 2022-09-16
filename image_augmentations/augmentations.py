@@ -34,7 +34,7 @@ def checkOverLap(min_x1, min_y1, max_x1, max_y1, min_x2, min_y2, max_x2, max_y2,
         return True
     return False
 
-def create_patches(title, image_path, label_path, image_dest = '', label_dest = ''):
+def create_patches_files(title, image_path, label_path, image_dest = '', label_dest = ''):
 
     image_path = os.path.join(image_path, title + '.png')
     label_path = os.path.join(label_path, title + '.txt')
@@ -44,6 +44,9 @@ def create_patches(title, image_path, label_path, image_dest = '', label_dest = 
     label = open(label_path)
 
     f = label.readlines()
+
+    if len(f) == 0:
+        return
 
     boxes_in_bounds = []
 
@@ -72,6 +75,10 @@ def create_patches(title, image_path, label_path, image_dest = '', label_dest = 
 
             boxes_in_bounds.append([label_name, label_num, min_x, min_y, max_x, max_y])
 
+    # if no box in the patches
+    if len(boxes_in_bounds) == 0:
+        return
+
     label_dest = os.path.join(label_dest, '{0}_{1}_{2}_{3}.txt'.format(title, 
                                             patch_center[0], 
                                             patch_center[1], 
@@ -95,6 +102,79 @@ def create_patches(title, image_path, label_path, image_dest = '', label_dest = 
 
     return
 
+def horizontalFlipImageAndLabels(image, labels):
+    image = np.flip(image, axis = 1)
+
+    if len(labels) == 0:
+        return image, labels
+
+    width = image.shape[1]
+
+    boxes_in_bounds = []
+
+    for box in labels:
+        label_num, min_x, min_y, max_x, max_y = box
+        boxes_in_bounds.append([label_num, width - max_x, min_y, width - min_x, max_y])
+
+    return image, boxes_in_bounds
+
+def verticalFlipImageAndLabels(image, labels):
+    image = np.flip(image, axis = 0)
+
+    if len(labels) == 0:
+        return image, labels
+
+    height = image.shape[0]
+
+    boxes_in_bounds = []
+
+    for box in labels:
+        label_num, min_x, min_y, max_x, max_y = box
+        boxes_in_bounds.append([label_num, min_x, height - max_y, max_x, height - min_y])
+
+    return image, boxes_in_bounds
+
+def returnPatches(image, labels):
+    if len(labels) == 0:
+        return image, labels
+    
+    boxes_in_bounds = []
+
+    # from https://stackoverflow.com/questions/31968588/extract-a-patch-from-an-image-given-patch-center-and-patch-scale
+    # define some values
+    # patch_center = np.array([np.random.randint(400, 500), np.random.randint(400, 500)])
+    patch_center = np.array([np.random.randint(image.shape[0] / 2 - 100, image.shape[0] / 2 + 100), 
+                            np.random.randint(image.shape[1] / 2 - 100, image.shape[1] / 2 + 100)])
+
+    patch_scale = np.random.uniform()
+
+    while patch_scale < 0.3:
+        patch_scale = np.random.uniform()
+
+    # calc patch position and extract the patch
+    smaller_dim = np.min(image.shape[0:2])
+    patch_size = int(patch_scale * smaller_dim)
+    patch_x = max(0, int(patch_center[0] - patch_size / 2.))
+    patch_y = max(0, int(patch_center[1] - patch_size / 2.))
+
+    for box in labels:
+        label_num, min_x, min_y, max_x, max_y = box
+        if checkOverLap(min_x, min_y, max_x, max_y, patch_x, patch_y, patch_x+patch_size, patch_y+patch_size) == False:
+            continue
+        else:
+            min_x, min_y, max_x, max_y = max(0, min_x - patch_x), max(0, min_y - patch_y), \
+            min(patch_size, max_x - patch_x), min(patch_size, max_y - patch_y)
+
+            boxes_in_bounds.append([label_num, min_x, min_y, max_x, max_y])
+
+    # if no box in the patches
+    if len(boxes_in_bounds) == 0:
+        return image, labels
+
+    patch_image = image[patch_y:patch_y+patch_size, patch_x:patch_x+patch_size]
+
+    return patch_image, boxes_in_bounds
+
 if __name__ == '__main__':
     image_path = '/home/usman/workspace/fisheye_images/rgb_images/'
     label_path = '/home/usman/workspace/fisheye_images/box_2d_annotations'
@@ -104,17 +184,15 @@ if __name__ == '__main__':
 
     file_names = glob.glob('/home/usman/workspace/fisheye_images/train_labels/*.txt')
 
-    # list_IDs = [f.split('/')[-1].replace('.txt', '') for f in file_names]
-
-    list_IDs = ['07600_RV']
+    list_IDs = [f.split('/')[-1].replace('.txt', '') for f in file_names]
 
     images_processed = 0
 
     for title in list_IDs:
         for _ in range(5):
-            create_patches(title, image_path, label_path)#, image_dest, label_dest) 
+            create_patches(title, image_path, label_path, image_dest, label_dest) 
         images_processed+=1
-        if images_processed > 1000:
-            break
+        # if images_processed > 1000:
+        #     break
 
 

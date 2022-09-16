@@ -4,6 +4,7 @@ import tensorflow as tf
 
 from getData import read_data, label_dimensions_normalized, resize_images_and_labels
 from bbox_utils import match_priors_with_gt
+from image_augmentations.augmentations import returnPatches, horizontalFlipImageAndLabels, verticalFlipImageAndLabels
 
 class DataGenerator(keras.utils.Sequence):
     def __init__(self, list_IDs,
@@ -16,7 +17,9 @@ class DataGenerator(keras.utils.Sequence):
                 image_height = 300,
                 image_width = 300,
                 normalize = True,
-                shuffle = True):
+                shuffle = True,
+                image_extension = '.png',
+                training = True):
         self.list_IDs = list_IDs
         self.batch_size = batch_size
         self.n_classes = n_classes
@@ -28,6 +31,8 @@ class DataGenerator(keras.utils.Sequence):
         self.image_height = image_height
         self.image_width = image_width
         self.normalize = normalize
+        self.image_extension = image_extension
+        self.training = training
         self.on_epoch_end()
 
         """
@@ -69,9 +74,18 @@ class DataGenerator(keras.utils.Sequence):
         for i, file_name in enumerate(list_IDs_temp):
             image, labelled_gt_box_coords = read_data(  file_name, 
                                         self.image_folder_path, 
-                                        self.label_folder_path
+                                        self.label_folder_path,
+                                        self.image_extension
                                      )
             
+            if self.training:
+                if np.random.rand() > 0.5:
+                    image, labelled_gt_box_coords = returnPatches(image, labelled_gt_box_coords)
+                if np.random.rand() > 0.5:
+                    image, labelled_gt_box_coords = horizontalFlipImageAndLabels(image, labelled_gt_box_coords)
+                if np.random.rand() > 0.8:
+                    image, labelled_gt_box_coords = verticalFlipImageAndLabels(image, labelled_gt_box_coords)
+
             # take care of images with no labels
             # if no label then the whole image is a background
             if len(labelled_gt_box_coords) == 0:

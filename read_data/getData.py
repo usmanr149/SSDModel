@@ -1,7 +1,7 @@
 import os
 import cv2
 
-def read_data(file_name, image_path, label_path):
+def read_data(file_name, image_path, label_path, image_extension='.png'):
     """
     inputs:
         file_name: name of file without type. Image should be in JPG on PNG format
@@ -12,7 +12,7 @@ def read_data(file_name, image_path, label_path):
         image: as a numpy array in rgb format
         label: in [[category_label, x_min, y_min, x_max, y_max]]
     """
-    image_path = os.path.join(image_path, file_name + '.png')
+    image_path = os.path.join(image_path, file_name + image_extension)
     label_path = os.path.join(label_path, file_name + '.txt')
 
     assert os.path.exists(image_path), "{0} image not found".format(image_path)
